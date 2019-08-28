@@ -58,10 +58,9 @@ import org.dcm4chee.arc.qmgt.HttpServletRequestInfo;
 import org.dcm4chee.arc.qmgt.IllegalTaskStateException;
 import org.dcm4chee.arc.qmgt.Outcome;
 import org.dcm4chee.arc.qmgt.QueueSizeLimitExceededException;
+import org.dcm4chee.arc.query.impl.QuerySizeEJB;
 import org.dcm4chee.arc.query.util.TaskQueryParam;
-import org.dcm4chee.arc.retrieve.RetrieveContext;
-import org.dcm4chee.arc.retrieve.RetrieveFailures;
-import org.dcm4chee.arc.retrieve.RetrieveService;
+import org.dcm4chee.arc.retrieve.*;
 import org.dcm4chee.arc.stgcmt.*;
 import org.dcm4chee.arc.storage.ReadContext;
 import org.dcm4chee.arc.storage.Storage;
@@ -81,6 +80,8 @@ import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.security.MessageDigest;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -103,6 +104,9 @@ public class StgCmtManagerImpl implements StgCmtManager {
 
     @Inject
     private StoreService storeService;
+
+    @Inject
+    private QuerySizeEJB querySizeEJB;
 
     @Inject
     private Event<StgCmtContext> stgCmtEvent;
@@ -165,6 +169,7 @@ public class StgCmtManagerImpl implements StgCmtManager {
                 return false;
             }
             Map<String, int[]> failuresBySeries = sopIUID == null ? new HashMap<>() : null;
+            retrCtx.getStudyInfos().forEach(studyInfo -> calculateStudySize(retrCtx, studyInfo));
             checkLocations(ctx, retrCtx, failuresBySeries);
             if (failuresBySeries != null) {
                 failuresBySeries.forEach((iuid, failures) -> {
@@ -361,6 +366,40 @@ public class StgCmtManagerImpl implements StgCmtManager {
         }
         ctx.getEventInfo().ensureSequence(Tag.FailedSOPSequence, numRefSOPs)
                 .add(failedSOP(cuid, iuid, failureReason));
+    }
+
+    private void calculateStudySize(RetrieveContext retrCtx, StudyInfo studyInfo) {
+        AtomicLong studySize = new AtomicLong(0L);
+        retrCtx.getSeriesInfos().stream()
+                .filter(seriesInfo -> seriesInfo.getSeriesSize() != 0L
+                                        && seriesInfo.getStudyInstanceUID().equals(studyInfo.getStudyInstanceUID()))
+                .forEach(seriesInfo -> studySize.addAndGet(calculateSeriesSize(retrCtx, seriesInfo)));
+
+        if (studySize.get() != studyInfo.getStudySize()) {
+            querySizeEJB.setStudySize(studyInfo.getStudyPk(), studySize.get());
+            LOG.info("Size of existing study[pk={}, StudyInstanceUID={}, size={}] updated to recalculated size {}",
+                    studyInfo.getStudyPk(), studyInfo.getStudyInstanceUID(), studyInfo.getStudySize(),
+                    studySize.get());
+        }
+    }
+
+    private long calculateSeriesSize(RetrieveContext retrCtx, SeriesInfo seriesInfo) {
+        long seriesSize = retrCtx.getMatches().stream()
+                .filter(instanceLocations -> seriesInfo.getSeriesInstanceUID()
+                        .equals(instanceLocations.getAttributes().getString(Tag.SeriesInstanceUID)))
+                .mapToLong(instanceLocation -> instanceLocation.getLocations().stream()
+                        .mapToLong(Location::getSize)
+                        .max()
+                        .getAsLong())
+                .sum();
+
+        if (seriesInfo.getSeriesSize() != seriesSize) {
+            querySizeEJB.setSeriesSize(seriesInfo.getSeriesPk(), seriesSize);
+            LOG.warn("Size of existing Series[pk={}, SeriesInstanceUID={}, size={}] varies from recalculated size {}",
+                    seriesInfo.getSeriesPk(), seriesInfo.getSeriesInstanceUID(), seriesInfo.getSeriesSize(),
+                    seriesSize);
+        }
+        return seriesSize;
     }
 
     private void checkLocations(StgCmtContext ctx, RetrieveContext retrCtx, Map<String,int[]> failuresBySeries) {

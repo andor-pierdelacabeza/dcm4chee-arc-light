@@ -59,7 +59,7 @@ import javax.persistence.PersistenceContext;
 @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 public class QuerySizeEJB {
 
-    private static final Long ZERO = Long.valueOf(0L);
+    private static final Long ZERO = 0L;
 
     @PersistenceContext(unitName = "dcm4chee-arc")
     EntityManager em;
@@ -72,14 +72,18 @@ public class QuerySizeEJB {
         }
         Long size = StringUtils.maskNull(
                 em.createNamedQuery(Series.SIZE_OF_STUDY, Long.class)
-                    .setParameter(1, studyPk)
-                    .getSingleResult(),
+                        .setParameter(1, studyPk)
+                        .getSingleResult(),
                 ZERO);
+        setStudySize(studyPk, size);
+        return size;
+    }
+
+    public void setStudySize(Long studyPk, Long size) {
         em.createNamedQuery(Study.SET_STUDY_SIZE)
                 .setParameter(1, studyPk)
                 .setParameter(2, size)
                 .executeUpdate();
-        return size;
     }
 
     public long calculateSeriesSize(Long seriesPk) {
@@ -88,11 +92,15 @@ public class QuerySizeEJB {
                 .setParameter(2, Location.ObjectType.DICOM_FILE.ordinal())
                 .getSingleResult();
         long size = result instanceof Number ? ((Number) result).longValue() : 0L;
+        setSeriesSize(seriesPk, size);
+        return size;
+    }
+
+    public void setSeriesSize(Long seriesPk, long size) {
         em.createNamedQuery(Series.SET_SERIES_SIZE)
                 .setParameter(1, seriesPk)
                 .setParameter(2, size)
                 .executeUpdate();
-        return size;
     }
 
     public long calculateStudySize(String studyUID) {

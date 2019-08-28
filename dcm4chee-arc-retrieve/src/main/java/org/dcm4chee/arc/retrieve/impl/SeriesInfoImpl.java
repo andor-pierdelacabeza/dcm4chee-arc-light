@@ -52,6 +52,7 @@ import java.util.Date;
  * @since May 2016
  */
 public class SeriesInfoImpl implements SeriesInfo {
+    private final Long seriesPk;
     private final String studyInstanceUID;
     private final String seriesInstanceUID;
     private final int failedRetrieves;
@@ -59,9 +60,12 @@ public class SeriesInfoImpl implements SeriesInfo {
     private final Date updatedTime;
     private final String expirationDate;
     private final String sourceAET;
+    private final Long seriesSize;
 
-    public SeriesInfoImpl(String studyInstanceUID, String seriesInstanceUID, int failedRetrieves,
-                          Completeness completeness, Date updatedTime, String expirationDate, String sourceAET) {
+    public SeriesInfoImpl(Long seriesPk, String studyInstanceUID, String seriesInstanceUID, int failedRetrieves,
+                          Completeness completeness, Date updatedTime, String expirationDate, String sourceAET,
+                          Long seriesSize) {
+        this.seriesPk = seriesPk;
         this.studyInstanceUID = studyInstanceUID;
         this.seriesInstanceUID = seriesInstanceUID;
         this.failedRetrieves = failedRetrieves;
@@ -69,6 +73,7 @@ public class SeriesInfoImpl implements SeriesInfo {
         this.updatedTime = updatedTime;
         this.expirationDate = expirationDate;
         this.sourceAET = sourceAET;
+        this.seriesSize = seriesSize;
     }
 
     @Override
@@ -104,5 +109,15 @@ public class SeriesInfoImpl implements SeriesInfo {
     @Override
     public String getSourceAET() {
         return sourceAET;
+    }
+
+    @Override
+    public Long getSeriesPk() {
+        return seriesPk;
+    }
+
+    @Override
+    public Long getSeriesSize() {
+        return seriesSize;
     }
 }
